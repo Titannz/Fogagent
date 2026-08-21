@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# FogAgent Local Data
+data/**/*.db
+data/**/*.sqlite
+data/**/*.sqlite3
+*.db
