@@ -222,3 +222,6 @@ data/**/*.db
 data/**/*.sqlite
 data/**/*.sqlite3
 *.db
+
+fogagent.bat
+*.bat
