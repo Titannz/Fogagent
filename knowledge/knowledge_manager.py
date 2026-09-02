@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class KnowledgeManager:
-    """Stores and retrieves evaluated, structured general knowledge."""
+    """Stores, retrieves, and audits evaluated, structured general knowledge."""
 
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or settings.knowledge_db_path
@@ -131,3 +131,40 @@ class KnowledgeManager:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) AS total FROM knowledge")
             return cursor.fetchone()["total"]
+
+    def find_similar(self, topic: str) -> List[Dict[str, Any]]:
+        """Find existing records with identical or similar topic names."""
+        pattern = f"%{topic.strip().lower()}%"
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM knowledge WHERE LOWER(topic) LIKE ? LIMIT 10", (pattern,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def audit_data(self) -> Dict[str, Any]:
+        """Audit the knowledge base for data quality: low confidence, duplicate topics."""
+        all_records = self.list_all(limit=500)
+        low_confidence = [r for r in all_records if r.get("confidence", 1.0) < 0.85]
+
+        # Detect identical topics
+        topic_counts: Dict[str, List[int]] = {}
+        for r in all_records:
+            t = r["topic"].strip().lower()
+            topic_counts.setdefault(t, []).append(r["id"])
+
+        duplicates = {t: ids for t, ids in topic_counts.items() if len(ids) > 1}
+
+        return {
+            "total_records": len(all_records),
+            "low_confidence_count": len(low_confidence),
+            "low_confidence_items": low_confidence,
+            "duplicate_topics_count": len(duplicates),
+            "duplicate_topics": duplicates
+        }
+
+    def purge_low_confidence(self, threshold: float = 0.85) -> int:
+        """Remove records with confidence strictly below threshold."""
+        with self._connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM knowledge WHERE confidence < ?", (threshold,))
+            conn.commit()
+            return cursor.rowcount

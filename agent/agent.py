@@ -1,29 +1,32 @@
-﻿"""FogAgent Core Implementation with Memory, Knowledge, and Controlled Study Mode."""
+﻿"""FogAgent Core Implementation with Quality Control, Study Queue, and Human-in-the-Loop."""
 from typing import Generator, List, Dict, Optional, Any
 import logging
 from config.settings import settings, Settings
 from models.ollama_model import OllamaModel
 from memory.memory_manager import MemoryManager
 from knowledge.knowledge_manager import KnowledgeManager
+from knowledge.study_queue import StudyQueue
 from agent.study_engine import StudyEngine
 
 logger = logging.getLogger(__name__)
 
 
 class Agent:
-    """Core AI Agent managing state, Memory, Knowledge, Study Mode, and LLM communication."""
+    """Core AI Agent managing state, Memory, Knowledge, Study Queue, and controlled LLM execution."""
 
     def __init__(
         self,
         llm: Optional[OllamaModel] = None,
         memory_mgr: Optional[MemoryManager] = None,
         knowledge_mgr: Optional[KnowledgeManager] = None,
+        study_queue: Optional[StudyQueue] = None,
         app_settings: Optional[Settings] = None
     ):
         self.settings = app_settings or settings
         self.llm = llm or OllamaModel(app_settings=self.settings)
         self.memory_mgr = memory_mgr or MemoryManager(db_path=self.settings.memory_db_path)
         self.knowledge_mgr = knowledge_mgr or KnowledgeManager(db_path=self.settings.knowledge_db_path)
+        self.study_queue = study_queue or StudyQueue(db_path=(self.settings.knowledge_dir / "study_queue.db"))
         self.study_engine = StudyEngine(llm=self.llm, knowledge_mgr=self.knowledge_mgr)
 
         self.study_mode: bool = False
@@ -49,14 +52,33 @@ class Agent:
             "context_length": self.settings.context_length,
             "ollama_host": self.settings.ollama_host,
             "total_memories": self.memory_mgr.count_memories(),
-            "total_knowledge": self.knowledge_mgr.count_knowledge()
+            "total_knowledge": self.knowledge_mgr.count_knowledge(),
+            "pending_study_queue": self.study_queue.count_pending()
         }
+
+    def estimate_workload(self, text: str) -> Dict[str, Any]:
+        """Estimate workload and processing time for input."""
+        return self.study_engine.estimate_workload(text)
+
+    def extract_study_candidate(self, text: str, source: str = "user_study") -> Optional[Dict[str, Any]]:
+        """Extract and clean a knowledge candidate (requires human approval before commit)."""
+        if not self.study_mode:
+            return None
+        return self.study_engine.evaluate_and_extract(text, source=source)
+
+    def commit_study_candidate(self, candidate: Dict[str, Any]) -> int:
+        """Commit an approved candidate into the Knowledge Base."""
+        return self.study_engine.commit_knowledge(candidate)
+
+    def queue_study_item(self, title: str, content: str, estimated_seconds: int = 60) -> int:
+        """Save study material into the deferred queue for later processing."""
+        return self.study_queue.add_item(title=title, content=content, estimated_seconds=estimated_seconds)
 
     def build_context_prompt(self, user_input: str) -> str:
         """Retrieve relevant memories and knowledge to augment the system prompt."""
         context_parts = [self.system_prompt]
 
-        # 1. Retrieve relevant memories (facts/preferences)
+        # 1. Retrieve relevant memories (facts/preferences/profile)
         relevant_memories = self.memory_mgr.search_memories(user_input, limit=3)
         if relevant_memories:
             mem_text = "\n".join([f"- {m['key']}: {m['value']}" for m in relevant_memories])
@@ -91,29 +113,16 @@ class Agent:
 
     def run(self, user_input: str) -> str:
         """Execute a synchronous prompt through the Agent."""
-        learned_info = None
-        if self.study_mode:
-            learned_info = self.study_engine.evaluate_and_extract(user_input)
-
         messages = self.build_messages(user_input)
         response = self.llm.generate(messages)
 
         # Persist conversation turn in short-term history
         self.memory_mgr.save_message("user", user_input)
         self.memory_mgr.save_message("assistant", response)
-
-        if learned_info:
-            notice = f"\n\n[Learned & Saved to Knowledge Base: {learned_info['topic']}]"
-            return response + notice
-
         return response
 
     def run_stream(self, user_input: str) -> Generator[str, None, None]:
         """Execute a streaming prompt yielding response tokens in real-time."""
-        learned_info = None
-        if self.study_mode:
-            learned_info = self.study_engine.evaluate_and_extract(user_input)
-
         messages = self.build_messages(user_input)
         full_response = []
 
@@ -125,6 +134,3 @@ class Agent:
         full_text = "".join(full_response)
         self.memory_mgr.save_message("user", user_input)
         self.memory_mgr.save_message("assistant", full_text)
-
-        if learned_info:
-            yield f"\n\n[Learned & Saved to Knowledge Base: {learned_info['topic']}]"

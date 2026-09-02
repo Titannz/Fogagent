@@ -1,25 +1,60 @@
-﻿"""Study Mode Learning Engine for FogAgent."""
+﻿"""Study Mode Learning Engine with Quality Gate & Workload Estimator."""
 import json
 import logging
 from typing import Optional, Dict, Any, List
 from models.ollama_model import OllamaModel
 from knowledge.knowledge_manager import KnowledgeManager
+from knowledge.data_cleaner import DataCleaner
 
 logger = logging.getLogger(__name__)
 
 
 class StudyEngine:
-    """Evaluates and extracts structured factual knowledge during Study Mode."""
+    """Evaluates, sanitizes, and extracts structured knowledge with human approval gating."""
 
-    def __init__(self, llm: OllamaModel, knowledge_mgr: KnowledgeManager):
+    def __init__(
+        self,
+        llm: OllamaModel,
+        knowledge_mgr: KnowledgeManager,
+        cleaner: Optional[DataCleaner] = None
+    ):
         self.llm = llm
         self.knowledge_mgr = knowledge_mgr
+        self.cleaner = cleaner or DataCleaner(min_confidence=0.85)
 
-    def evaluate_and_extract(self, user_input: str, context: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def estimate_workload(self, text: str) -> Dict[str, Any]:
         """
-        Analyze user input to determine if it contains new, structured factual knowledge to learn.
-        Returns a dict of extracted knowledge or None if not suitable for permanent knowledge storage.
+        Estimate workload and processing time for a text/document.
+        Assumes ~13 tokens/sec generation speed on local AMD Radeon 780M.
         """
+        word_count = len(text.split())
+        # Roughly 1.3 tokens per word
+        est_tokens = int(word_count * 1.3)
+        # Baseline overhead ~10s, plus processing tokens
+        est_seconds = max(5, int(est_tokens / 30) + 10)
+        is_long_task = word_count > 300 or est_seconds > 45
+
+        return {
+            "word_count": word_count,
+            "estimated_tokens": est_tokens,
+            "estimated_seconds": est_seconds,
+            "is_long_task": is_long_task
+        }
+
+    def evaluate_and_extract(
+        self,
+        user_input: str,
+        source: str = "user_study"
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Sanitizes input, checks for noise, extracts structured knowledge,
+        and returns a candidate for human approval (DOES NOT commit directly).
+        """
+        # 1. Noise and trivial chatter filtering
+        if self.cleaner.is_noise_or_trivial(user_input):
+            logger.info("Input filtered out by NoiseFilter (casual/trivial).")
+            return None
+
         prompt = f"""You are a Knowledge Extraction and Evaluation module for FogAgent.
 Analyze the following text provided by the user.
 
@@ -29,9 +64,9 @@ Text:
 Determine whether this text contains factual, general domain knowledge (e.g., technical concepts, definitions, algorithms, rules, science, architectures, or specific facts) that is worth saving permanently into the Knowledge Base.
 
 Do NOT save:
-- Casual greetings (e.g. "hi", "how are you")
-- Ephemeral instructions or casual questions (e.g. "what time is it", "tell me a joke")
-- Trivial opinions or meaningless noise
+- Casual greetings, chatter, subjective opinions
+- Questions, ephemeral instructions, or trivial chatter
+- Dubious or unverified speculation
 
 Respond ONLY with a valid JSON object in this exact schema:
 {{
@@ -64,31 +99,46 @@ Do NOT output any markdown formatting around the JSON. Output pure raw JSON only
             data = json.loads(raw_response)
 
             if data.get("is_knowledge") is True and data.get("topic") and data.get("content"):
-                topic = str(data["topic"]).strip()
-                content = str(data["content"]).strip()
-                tags = data.get("tags", [])
-                if isinstance(tags, str):
-                    tags = [t.strip() for t in tags.split(",")]
-                confidence = float(data.get("confidence", 0.9))
+                candidate = {
+                    "topic": str(data["topic"]).strip(),
+                    "content": str(data["content"]).strip(),
+                    "tags": data.get("tags", []),
+                    "confidence": float(data.get("confidence", 0.0)),
+                    "source": source
+                }
+                if isinstance(candidate["tags"], str):
+                    candidate["tags"] = [t.strip() for t in candidate["tags"].split(",")]
 
-                # Store into KnowledgeManager
-                record_id = self.knowledge_mgr.add_knowledge(
-                    topic=topic,
-                    content=content,
-                    source="study_mode",
-                    confidence=confidence,
-                    tags=tags
+                # 2. Quality Validation
+                is_valid, reason = self.cleaner.validate_candidate(candidate)
+                if not is_valid:
+                    logger.info(f"Candidate rejected by DataCleaner: {reason}")
+                    return None
+
+                # 3. Duplicate and conflict check
+                existing = self.knowledge_mgr.list_all(limit=200)
+                dup_info = self.cleaner.check_duplicate_or_conflict(
+                    candidate["topic"],
+                    candidate["content"],
+                    existing
                 )
 
-                return {
-                    "id": record_id,
-                    "topic": topic,
-                    "content": content,
-                    "tags": tags,
-                    "confidence": confidence
-                }
+                candidate["duplicate_status"] = dup_info["status"]
+                candidate["duplicate_msg"] = dup_info["message"]
+
+                return candidate
 
         except Exception as e:
             logger.warning(f"Study evaluation failed: {e}")
 
         return None
+
+    def commit_knowledge(self, candidate: Dict[str, Any]) -> int:
+        """Commit an approved knowledge candidate into KnowledgeManager."""
+        return self.knowledge_mgr.add_knowledge(
+            topic=candidate["topic"],
+            content=candidate["content"],
+            source=candidate.get("source", "user_study"),
+            confidence=candidate.get("confidence", 1.0),
+            tags=candidate.get("tags", [])
+        )
