@@ -225,3 +225,6 @@ data/**/*.sqlite3
 
 fogagent.bat
 *.bat
+
+data/
+
