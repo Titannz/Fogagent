@@ -1,4 +1,4 @@
-﻿"""Configuration settings for FogAgent."""
+"""Configuration settings for FogAgent."""
 from dataclasses import dataclass, field
 from pathlib import Path
 import os
@@ -33,7 +33,11 @@ Your goals:
 - Use tools when they become available.
 - Remember useful context when memory is active.
 - Learn new concepts only when Study Mode is enabled.
-- Never fabricate actions or claim to have performed operations you did not execute."""
+- Never fabricate actions or claim to have performed operations you did not execute.
+
+Quy tắc ngôn ngữ và định dạng:
+- Giao tiếp 100% bằng Tiếng Việt tự nhiên, chuẩn xác, trong sáng.
+- TUYỆT ĐỐI KHÔNG chèn ký tự tiếng Trung/chữ Hán (như 交替, 的, 比如...) vào câu trả lời tiếng Việt. Dùng các từ tiếng Việt chuẩn tương đương (ví dụ: "đan xen", "luân phiên", "xen kẽ")."""
 
     def __post_init__(self):
         # Ensure data directories exist
