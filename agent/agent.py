@@ -1,4 +1,4 @@
-﻿"""FogAgent Core Implementation with Quality Control, Study Queue, and Human-in-the-Loop."""
+"""FogAgent Core Implementation with Quality Control, Study Queue, and Human-in-the-Loop."""
 from typing import Generator, List, Dict, Optional, Any
 import logging
 from config.settings import settings, Settings
@@ -6,6 +6,7 @@ from models.ollama_model import OllamaModel
 from memory.memory_manager import MemoryManager
 from knowledge.knowledge_manager import KnowledgeManager
 from knowledge.study_queue import StudyQueue
+from knowledge.math_formatter import format_math_symbols
 from agent.study_engine import StudyEngine
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ class Agent:
         """Execute a synchronous prompt through the Agent."""
         messages = self.build_messages(user_input)
         response = self.llm.generate(messages)
+        response = format_math_symbols(response)
 
         # Persist conversation turn in short-term history
         self.memory_mgr.save_message("user", user_input)
@@ -122,13 +124,30 @@ class Agent:
         return response
 
     def run_stream(self, user_input: str) -> Generator[str, None, None]:
-        """Execute a streaming prompt yielding response tokens in real-time."""
+        """Execute a streaming prompt yielding response tokens with formatted math symbols."""
         messages = self.build_messages(user_input)
         full_response = []
+        buffer = ""
 
         for chunk in self.llm.generate_stream(messages):
-            full_response.append(chunk)
-            yield chunk
+            buffer += chunk
+            # If buffer contains backslash command, wait for word boundary before yielding
+            if "\\" in buffer:
+                # If command terminated by space, newline, or punctuation, format & yield
+                if any(c in buffer.split("\\")[-1] for c in (" ", "\n", "$", "{", "}", "(", ")", ",", ".")):
+                    formatted = format_math_symbols(buffer)
+                    yield formatted
+                    full_response.append(formatted)
+                    buffer = ""
+            else:
+                yield buffer
+                full_response.append(buffer)
+                buffer = ""
+
+        if buffer:
+            formatted = format_math_symbols(buffer)
+            yield formatted
+            full_response.append(formatted)
 
         # Persist conversation turn in short-term history
         full_text = "".join(full_response)
