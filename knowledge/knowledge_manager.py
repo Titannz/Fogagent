@@ -1,4 +1,4 @@
-﻿"""Local Knowledge Manager using SQLite."""
+"""Local Knowledge Manager using SQLite."""
 import sqlite3
 import datetime
 from pathlib import Path
@@ -8,6 +8,15 @@ from contextlib import contextmanager
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+VI_EN_STOP_WORDS = {
+    "cho", "tôi", "bạn", "mình", "là", "và", "các", "những", "của", "thì",
+    "ở", "mà", "có", "gì", "nào", "sao", "được", "ra", "vào", "này",
+    "đó", "khi", "với", "để", "như", "thế", "hãy", "ví", "dụ", "thêm",
+    "tiếp", "đi", "lại", "nữa", "hỏi", "biết", "nói", "a", "an", "the",
+    "is", "are", "and", "or", "to", "in", "on", "for", "of", "with",
+    "what", "how", "why", "can", "you", "give", "me", "tell"
+}
 
 
 class KnowledgeManager:
@@ -89,11 +98,19 @@ class KnowledgeManager:
             return [dict(row) for row in cursor.fetchall()]
 
     def search_knowledge(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Search knowledge across topic, content, and tags."""
-        terms = [t.strip().lower() for t in query.split() if len(t.strip()) > 1]
-        if not terms:
-            terms = [query.strip().lower()]
+        """Search knowledge across topic, content, and tags with stop-words filtering."""
+        import re
+        clean_query = re.sub(r"[?!,.:;\"'()\[\]{}]", " ", query)
+        raw_terms = [t.strip().lower() for t in clean_query.split() if len(t.strip()) > 1]
+        terms = [t for t in raw_terms if t not in VI_EN_STOP_WORDS]
 
+        # If query only contains conversational stop-words (e.g. 'cho tôi ví dụ', 'tại sao'),
+        # skip DB search immediately to reduce latency.
+        if not terms:
+            return []
+
+        # Prioritize longer, more informative keywords
+        terms = sorted(terms, key=len, reverse=True)[:6]
         conditions = []
         params = []
         for term in terms:

@@ -1,11 +1,11 @@
-﻿"""Data Cleaner & Quality Gatekeeper for FogAgent."""
+"""Data Cleaner & Quality Gatekeeper for FogAgent."""
 import re
 from typing import Dict, Any, List, Tuple, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Common casual/chatter patterns that should never enter the knowledge base
+# Common casual/chatter or question/command patterns that are not study facts
 TRIVIAL_PATTERNS = [
     r"^(xin\s+)?chào(\s+bạn|\s+cậu|\s+nhé|\s+ạ)?$",
     r"^(hi|hello|hey|alo|ê|ơi)(\s+there)?$",
@@ -14,6 +14,9 @@ TRIVIAL_PATTERNS = [
     r"^(ok|ừ|ừm|okie|yes|no|được|rồi)(\s+bạn)?$",
     r"^thời\s+tiết.*hôm\s+nay.*$",
     r"^kể\s+cho\s+tôi\s+nghe\s+truyện\s+cười.*$",
+    r"^(cho\s+tôi|hãy|tại\s+sao|như\s+thế\s+nào|là\s+gì|có\s+phải|ví\s+dụ|giải\s+thích|chỉ\s+cho|hỏi|xin|làm\s+sao|thế\s+nào|đâu\s+là|bao\s+nhiêu).*",
+    r"^.*\?$",
+    r"^(what|how|why|can\s+you|could\s+you|please|give\s+me|explain|tell\s+me|show\s+me).*",
 ]
 
 

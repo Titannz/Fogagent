@@ -1,4 +1,4 @@
-﻿"""Local Memory Manager using SQLite."""
+"""Local Memory Manager using SQLite."""
 import sqlite3
 import datetime
 from pathlib import Path
@@ -104,11 +104,25 @@ class MemoryManager:
             return [dict(row) for row in cursor.fetchall()]
 
     def search_memories(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Search memories by keyword match across terms in query."""
-        terms = [t.strip().lower() for t in query.split() if len(t.strip()) > 1]
-        if not terms:
-            terms = [query.strip().lower()]
+        """Search memories by keyword match across terms in query with stop-words filtering."""
+        import re
+        clean_query = re.sub(r"[?!,.:;\"'()\[\]{}]", " ", query)
+        raw_terms = [t.strip().lower() for t in clean_query.split() if len(t.strip()) > 1]
+        # Quick stop words set to avoid unnecessary database scans
+        stop_words = {
+            "cho", "tôi", "bạn", "mình", "là", "và", "các", "những", "của", "thì",
+            "ở", "mà", "có", "gì", "nào", "sao", "được", "ra", "vào", "này",
+            "đó", "khi", "với", "để", "như", "thế", "hãy", "ví", "dụ", "thêm",
+            "tiếp", "đi", "lại", "nữa", "hỏi", "biết", "nói"
+        }
+        terms = [t for t in raw_terms if t not in stop_words]
 
+        # If query only has stop words, return empty immediately
+        if not terms:
+            return []
+
+        # Prioritize longer, more informative keywords
+        terms = sorted(terms, key=len, reverse=True)[:6]
         conditions = []
         params = []
         for term in terms:
