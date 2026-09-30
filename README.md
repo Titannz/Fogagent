@@ -114,6 +114,9 @@ flowchart TD
   - Strict system prompts and context constraints preventing the agent from fabricating facts, APIs, formulas, or libraries when uncertain.
   - Focused low temperature (`0.3`) for deterministic, grounded reasoning.
   - Prioritizes verified local entries stored in `knowledge.db` and user profiles in `memory.db`.
+- **Secure Local Tools & Human Verification Gate (Phase 8):**
+  - 100% offline deterministic tools: `math_evaluator` (AST-based math parser without `eval`), `file_inspector` (sandboxed workspace viewer protecting against path traversal), `db_inspector` (read-only SQLite schemas & safe SELECT queries), and `python_runner` (isolated subprocess with execution timeouts).
+  - Explicit Human Verification Gate (`y/n`) before executing actions, giving users complete control over local execution.
 
 ---
 
@@ -140,6 +143,15 @@ Fogagent/
 ├── models/
 │   ├── __init__.py
 │   └── ollama_model.py       # Ollama client with token streaming
+├── tools/
+│   ├── __init__.py
+│   ├── base_tool.py          # Abstract base tool, RiskLevel, and ToolResult
+│   ├── verification_gate.py  # Human-in-the-Loop verification gate (y/n)
+│   ├── math_evaluator.py     # AST-based safe math expression evaluator
+│   ├── file_inspector.py     # Sandboxed workspace file reader & directory lister
+│   ├── db_inspector.py       # Read-only SQLite schema and safe query inspector
+│   ├── python_runner.py      # Isolated subprocess Python runner with timeout
+│   └── tool_registry.py      # Central registration, schema exporter & call parser
 ├── tests/
 │   ├── test_config.py
 │   ├── test_agent.py
@@ -148,8 +160,10 @@ Fogagent/
 │   ├── test_study_mode.py
 │   ├── test_data_cleaner.py
 │   ├── test_study_queue.py
-│   └── test_math_formatter.py
+│   ├── test_math_formatter.py
+│   └── test_tools.py
 ├── main.py                   # Interactive terminal interface
+├── study_markdown.py         # Markdown ingestion script into Knowledge DB
 ├── study_math.py             # Controlled math ingestion script with 1-hour watchdog
 ├── requirements.txt
 └── README.md
@@ -189,6 +203,11 @@ python main.py
 | `queue_drop <id>` | Queue | Remove an item from the study queue. |
 | `audit` | Quality | Audit database for duplicate topics and low-confidence entries. |
 | `delete <id>` | Quality | Permanently delete a specific knowledge entry by ID. |
+| `tools` | Tools | List all registered local tools and their risk levels. |
+| `eval <expr>` | Tools | Safely evaluate mathematical expressions via AST (`math_evaluator`). |
+| `run_py <code>` | Tools | Execute Python code in a timeout-bounded subprocess (`python_runner`). |
+| `inspect <path>`| Tools | List directory or inspect text files within workspace (`file_inspector`).|
+| `db <name>` | Tools | Inspect local SQLite database schema and run safe SELECT queries (`db_inspector`). |
 | `profile` | Memory | View personalized profile, preferences, and hardware constraints. |
 | `remember <k>: <v>` | Memory | Store a user preference or fact into Memory. |
 | `memories` | Memory | List all stored persistent memories. |
@@ -200,7 +219,7 @@ python main.py
 
 ## Running Tests
 
-Run the complete 28 automated unit tests:
+Run the complete 49 automated unit tests:
 ```bash
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
@@ -216,5 +235,5 @@ python -m unittest discover -s tests -p "test_*.py" -v
 - [x] **Phase 5:** Controlled Study Mode Learning Engine (`youcanstudy` / `byebye`).
 - [x] **Phase 6:** Data Quality Pipeline, Loop Control, Workload Estimator & Study Queue.
 - [x] ~~**Phase 7:** Autonomous Web Researcher (Removed for safety & offline integrity)~~.
-- [ ] **Phase 8:** Secure Local Tools (Deterministic local scripts with human verification).
+- [x] **Phase 8:** Secure Local Tools (Deterministic local scripts with human verification).
 - [ ] **Phase 9:** Autonomous Planning & Task Decomposition DAG.

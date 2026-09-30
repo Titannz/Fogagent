@@ -1,4 +1,4 @@
-﻿"""FogAgent Main Entrypoint & CLI Interface with Data Quality & Loop Control."""
+"""FogAgent Main Entrypoint & CLI Interface with Data Quality & Loop Control."""
 import sys
 from agent.agent import Agent
 
@@ -25,6 +25,12 @@ def print_banner():
     print("  audit                - Quét kiểm tra dữ liệu rác, trùng lặp trong CSDL")
     print("  delete <id>          - Xóa vĩnh viễn 1 bản ghi tri thức")
     print("  knowledge            - Liệt kê toàn bộ tri thức đã lưu")
+    print("\nCông cụ Cục bộ An toàn (Secure Local Tools - Phase 8):")
+    print("  tools                - Liệt kê toàn bộ công cụ cục bộ và mức độ rủi ro")
+    print("  eval <biểu_thức>     - Tính toán biểu thức toán học an toàn (math_evaluator)")
+    print("  run_py <mã_python>   - Chạy thử nghiệm đoạn mã Python cục bộ (python_runner)")
+    print("  inspect <đường_dẫn>  - Xem thư mục hoặc đọc tệp tin nội bộ (file_inspector)")
+    print("  db <tên_csdl>        - Kiểm tra cấu trúc CSDL cục bộ (db_inspector)")
     print("\nKý ức & Cá nhân hóa (Memory & Profile):")
     print("  profile              - Xem hồ sơ cá nhân hóa & quy tắc kiểm soát")
     print("  remember <k>: <v>    - Lưu thủ công 1 sở thích hoặc thông tin cá nhân")
@@ -199,6 +205,58 @@ def main():
                 print(f"\nFogAgent: Đã ghi nhớ sở thích '{k}': '{v}'")
                 continue
 
+        # Phase 8: Secure Local Tools CLI Commands
+        if cmd == "tools":
+            tool_list = agent.list_tools()
+            print(f"\n--- Danh sách công cụ cục bộ an toàn ({len(tool_list)}) ---")
+            for t in tool_list:
+                print(f"  • {t['name']} [Rủi ro: {t['risk_level']}]: {t['description']}")
+                print(f"    Tham số: {t['parameters']}")
+            print("-------------------------------------------------------------")
+            continue
+
+        if cmd.startswith("eval "):
+            expr = user_input[len("eval "):].strip()
+            res = agent.execute_tool("math_evaluator", {"expression": expr}, purpose="Tính toán toán học qua lệnh eval")
+            if res.success:
+                print(f"\n✅ Kết quả: {res.output} (Thời gian: {res.execution_time:.4f}s)")
+            else:
+                print(f"\n❌ Lỗi: {res.error}")
+            continue
+
+        if cmd.startswith("run_py "):
+            code = user_input[len("run_py "):].strip()
+            res = agent.execute_tool("python_runner", {"code": code}, purpose="Chạy mã Python qua CLI")
+            if res.success:
+                print(f"\n--- Kết quả chạy Python ({res.execution_time:.4f}s) ---")
+                print(res.output)
+                print("-----------------------------------------------")
+            else:
+                print(f"\n❌ Lỗi thực thi: {res.error}")
+            continue
+
+        if cmd.startswith("inspect "):
+            target_path = user_input[len("inspect "):].strip()
+            full_path = (agent.settings.base_dir / target_path).resolve()
+            action = "list" if full_path.is_dir() else "read"
+            res = agent.execute_tool("file_inspector", {"action": action, "path": target_path}, purpose=f"Kiểm tra '{target_path}'")
+            if res.success:
+                print(f"\n--- Kết quả kiểm tra ({action} '{target_path}') ---")
+                print(res.output)
+                print("--------------------------------------------------")
+            else:
+                print(f"\n❌ Lỗi: {res.error}")
+            continue
+
+        if cmd.startswith("db "):
+            db_name = user_input[len("db "):].strip()
+            res = agent.execute_tool("db_inspector", {"database": db_name}, purpose=f"Kiểm tra cấu trúc CSDL '{db_name}'")
+            if res.success:
+                print(f"\n{res.output}")
+            else:
+                print(f"\n❌ Lỗi: {res.error}")
+            continue
+
         # Study Mode workload check for long content
         if agent.study_mode:
             workload = agent.estimate_workload(user_input)
@@ -222,12 +280,37 @@ def main():
                         print("❌ Đã hủy bỏ hoàn toàn tác vụ.")
                     continue
 
-        # Normal generation
+        # Normal generation & tool call handling
         try:
             print("\nFogAgent: ", end="", flush=True)
+            stream_chunks = []
             for chunk in agent.run_stream(user_input):
                 print(chunk, end="", flush=True)
+                stream_chunks.append(chunk)
             print()
+
+            full_resp = "".join(stream_chunks)
+            tool_call = agent.tool_registry.extract_tool_call(full_resp)
+            if tool_call:
+                t_name = tool_call.get("tool")
+                t_args = tool_call.get("args", {})
+                t_purpose = tool_call.get("purpose", "Yêu cầu từ mô hình AI")
+                print(f"\n[Phát hiện lời gọi công cụ nội bộ]: {t_name}")
+                t_res = agent.execute_tool(t_name, t_args, purpose=t_purpose)
+                if t_res.success:
+                    print(f"┌── [KẾT QUẢ CÔNG CỤ ({t_name})] ───────────────────────┐")
+                    for l in t_res.output.splitlines():
+                        print(f"│ {l}")
+                    print(f"│ (Thời gian: {t_res.execution_time:.4f}s)")
+                    print(f"└────────────────────────────────────────────────────────┘")
+                    followup = f"Kết quả từ công cụ {t_name}: {t_res.output}. Hãy tóm tắt hoặc đưa ra câu trả lời cuối cùng."
+                    print("\nFogAgent (Kết luận): ", end="", flush=True)
+                    for fchunk in agent.run_stream(followup):
+                        print(fchunk, end="", flush=True)
+                    print()
+                else:
+                    print(f"❌ [Lỗi công cụ]: {t_res.error}")
+
         except Exception as e:
             print(f"\n[Error] {e}")
 

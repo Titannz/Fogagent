@@ -8,6 +8,8 @@ from knowledge.knowledge_manager import KnowledgeManager
 from knowledge.study_queue import StudyQueue
 from knowledge.math_formatter import format_math_symbols
 from agent.study_engine import StudyEngine
+from tools.tool_registry import ToolRegistry
+from tools.base_tool import ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,7 @@ class Agent:
         memory_mgr: Optional[MemoryManager] = None,
         knowledge_mgr: Optional[KnowledgeManager] = None,
         study_queue: Optional[StudyQueue] = None,
+        tool_registry: Optional[ToolRegistry] = None,
         app_settings: Optional[Settings] = None
     ):
         self.settings = app_settings or settings
@@ -28,6 +31,7 @@ class Agent:
         self.memory_mgr = memory_mgr or MemoryManager(db_path=self.settings.memory_db_path)
         self.knowledge_mgr = knowledge_mgr or KnowledgeManager(db_path=self.settings.knowledge_db_path)
         self.study_queue = study_queue or StudyQueue(db_path=(self.settings.knowledge_dir / "study_queue.db"))
+        self.tool_registry = tool_registry or ToolRegistry()
         self.study_engine = StudyEngine(llm=self.llm, knowledge_mgr=self.knowledge_mgr)
 
         self.study_mode: bool = False
@@ -54,8 +58,28 @@ class Agent:
             "ollama_host": self.settings.ollama_host,
             "total_memories": self.memory_mgr.count_memories(),
             "total_knowledge": self.knowledge_mgr.count_knowledge(),
-            "pending_study_queue": self.study_queue.count_pending()
+            "pending_study_queue": self.study_queue.count_pending(),
+            "available_tools": len(self.tool_registry.tools)
         }
+
+    def list_tools(self) -> List[Dict[str, Any]]:
+        """Return list of registered secure local tools."""
+        return self.tool_registry.list_tools()
+
+    def execute_tool(
+        self,
+        tool_name: str,
+        kwargs: Dict[str, Any],
+        purpose: str = "",
+        bypass_gate: bool = False
+    ) -> ToolResult:
+        """Execute a secure local tool with verification gate enforcement."""
+        return self.tool_registry.execute_tool(
+            name=tool_name,
+            kwargs=kwargs,
+            purpose=purpose,
+            bypass_gate=bypass_gate
+        )
 
     def estimate_workload(self, text: str) -> Dict[str, Any]:
         """Estimate workload and processing time for input."""
@@ -99,6 +123,9 @@ class Agent:
 
         # 4. Anti-hallucination grounding constraint
         context_parts.append("\n[Anti-Hallucination Guard]: Always base technical facts and answers strictly on verified knowledge and logic. If uncertain or without data, explicitly state what is not known. Never invent facts, formulas, or library methods.")
+
+        # 5. Local Tools prompt
+        context_parts.append("\n" + self.tool_registry.get_tool_prompt())
 
         return "\n".join(context_parts)
 
