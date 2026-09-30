@@ -97,6 +97,9 @@ class Agent:
         else:
             context_parts.append("\n[Study Mode: OFF] Learning is currently disabled. Answer using existing knowledge.")
 
+        # 4. Anti-hallucination grounding constraint
+        context_parts.append("\n[Anti-Hallucination Guard]: Always base technical facts and answers strictly on verified knowledge and logic. If uncertain or without data, explicitly state what is not known. Never invent facts, formulas, or library methods.")
+
         return "\n".join(context_parts)
 
     def build_messages(self, user_input: str) -> List[Dict[str, str]]:

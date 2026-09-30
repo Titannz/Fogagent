@@ -1,4 +1,4 @@
-﻿# FogAgent
+# FogAgent
 
 **FogAgent** is a personal, local-first, offline AI Agent designed to run entirely on local hardware with GPU acceleration, persistent contextual memory, structured knowledge management, human-controlled Study Mode, and strict data quality gates.
 
@@ -109,7 +109,11 @@ flowchart TD
 - **Clean Terminal Math (Unicode):**
   - Converts raw LaTeX markup (`\leq`, `\geq`, `\in`, `\forall`, `\to`, `\infty`, `\times`) into clean Unicode characters (`≤`, `≥`, `∈`, `∀`, `→`, `∞`, `×`) in real-time.
 - **Structured Knowledge Store (`knowledge.db`):**
-  - Pre-loaded with 35+ verified university-level mathematical theorems (Linear Algebra, Calculus, Sequences, Bolzano-Weierstrass, Rolle, Lagrange).
+  - Pre-loaded with 47+ verified concepts (University Mathematics, Data Structures & Algorithms in Python, and Relational SQL Databases).
+- **Anti-Hallucination Guard & Fact Grounding:**
+  - Strict system prompts and context constraints preventing the agent from fabricating facts, APIs, formulas, or libraries when uncertain.
+  - Focused low temperature (`0.3`) for deterministic, grounded reasoning.
+  - Prioritizes verified local entries stored in `knowledge.db` and user profiles in `memory.db`.
 
 ---
 

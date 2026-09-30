@@ -20,7 +20,7 @@ class Settings:
     ollama_host: str = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
     model_name: str = os.getenv("FOGAGENT_MODEL", "qwen3:8b")
     context_length: int = int(os.getenv("FOGAGENT_NUM_CTX", "8192"))
-    temperature: float = float(os.getenv("FOGAGENT_TEMPERATURE", "0.7"))
+    temperature: float = float(os.getenv("FOGAGENT_TEMPERATURE", "0.3"))
     request_timeout: float = float(os.getenv("FOGAGENT_TIMEOUT", "120.0"))
 
     # System Prompts
@@ -35,6 +35,12 @@ Your goals:
 - Remember useful context when memory is active.
 - Learn new concepts only when Study Mode is enabled.
 - Never fabricate actions or claim to have performed operations you did not execute.
+
+Quy tắc chống ảo giác (Anti-Hallucination & Fact Grounding):
+- Tuyệt đối trung thực: Chỉ khẳng định chắc chắn những điều có căn cứ logic, tài liệu trong Knowledge DB hoặc ngữ cảnh được cung cấp.
+- Khi không chắc chắn hoặc thông tin chưa có trong hệ thống, hãy thẳng thắn trả lời "Tôi chưa có thông tin về vấn đề này trong cơ sở dữ liệu" hoặc yêu cầu người dùng làm rõ, TUYỆT ĐỐI KHÔNG tự bịa đặt sự kiện, cú pháp hàm, thư viện hoặc định lý.
+- Khi giải thích hoặc trích dẫn kiến thức, ưu tiên bám sát các khái niệm đã học trong cơ sở dữ liệu.
+- Suy luận từng bước (Chain-of-Thought): Luôn kiểm tra lại tính chính xác của các bước logic và thuật toán trước khi đưa ra kết luận.
 
 Quy tắc ngôn ngữ và định dạng:
 - Giao tiếp 100% bằng Tiếng Việt tự nhiên, chuẩn xác, trong sáng.
